@@ -1,0 +1,92 @@
+services:
+  outline:
+    image: docker.getoutline.com/outlinewiki/outline:latest
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - authentik-server
+    environment:
+      NODE_ENV: production
+      SECRET_KEY: $SERVICE_BASE64_64_OUTLINESECRET
+      UTILS_SECRET: $SERVICE_BASE64_64_OUTLINEUTILS
+      DATABASE_URL: postgres://outline:$SERVICE_PASSWORD_OUTLINEDB@postgres:5432/outline
+      PGSSLMODE: disable
+      REDIS_URL: redis://redis:6379
+      URL: ${OUTLINE_URL}
+      PORT: 3000
+      FILE_STORAGE: local
+      FILE_STORAGE_LOCAL_ROOT_DIR: /var/lib/outline/data
+      OIDC_CLIENT_ID: outline
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_AUTH_URI: ${AUTHENTIK_URL}/application/o/authorize/
+      OIDC_TOKEN_URI: ${AUTHENTIK_URL}/application/o/token/
+      OIDC_USERINFO_URI: ${AUTHENTIK_URL}/application/o/userinfo/
+      OIDC_DISPLAY_NAME: "Login"
+      OIDC_USERNAME_CLAIM: preferred_username
+    volumes:
+      - outline-data:/var/lib/outline/data
+    expose:
+      - "3000"
+
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: outline
+      POSTGRES_PASSWORD: $SERVICE_PASSWORD_OUTLINEDB
+      POSTGRES_DB: outline
+    volumes:
+      - outline-db:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+
+  authentik-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: $SERVICE_PASSWORD_AUTHENTIKDB
+      POSTGRES_DB: authentik
+    volumes:
+      - authentik-db:/var/lib/postgresql/data
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:latest
+    restart: unless-stopped
+    command: server
+    depends_on:
+      - authentik-postgres
+    environment:
+      AUTHENTIK_SECRET_KEY: $SERVICE_BASE64_64_AUTHENTIKSECRET
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: $SERVICE_PASSWORD_AUTHENTIKDB
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+    expose:
+      - "9000"
+    volumes:
+      - authentik-media:/media
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:latest
+    restart: unless-stopped
+    command: worker
+    depends_on:
+      - authentik-postgres
+    environment:
+      AUTHENTIK_SECRET_KEY: $SERVICE_BASE64_64_AUTHENTIKSECRET
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: $SERVICE_PASSWORD_AUTHENTIKDB
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+    volumes:
+      - authentik-media:/media
+
+volumes:
+  outline-data:
+  outline-db:
+  authentik-db:
+  authentik-media:
